@@ -316,7 +316,7 @@ const lsKey = k => `fund.${k}.${GH.owner}/${GH.repo}`;
 
 /* ---------- State ---------- */
 const DEFAULT_CFG = {
-  groupName: "হেক্সাবন্ড আল-বারাকাহ ক্যাপিটাল", groupNameEn: "Hexabond Al-Barakah Capital", custodyLabel: "প্রধান অর্থ কর্মকর্তার হেফাজতে", startMonth: "2026-11", dueDay: 15, depositByDay: 20,
+  groupName: "হেক্সাবন্ড আল-বারাকাহ ক্যাপিটাল", groupNameEn: "Hexabond Al-Barakah Capital", custodyLabel: "প্রধান অর্থ কর্মকর্তার হেফাজতে", startMonth: "2026-11", dueDay: 15, depositByDay: 20, bankStartMonth: "2027-01",
   rates: [{ from: "2026-11", amount: 2000 }],
   accounts: { bankA: { label: "যৌথ হিসাব-১", bank: "সোনালী ব্যাংক", branch: "", last4: "", opened: "" },
               bankB: { label: "যৌথ হিসাব-২", bank: "সোনালী ব্যাংক", branch: "", last4: "", opened: "" } },
@@ -553,7 +553,9 @@ function vOverview(){
   const c = cfg(), k = calc(), cm = curMonth(), am = activeMembers();
   if (!S.members.length) return setupCard();
   const alerts = [];
-  if (k.undeposited.length) alerts.push(`<div class="alert">${esc(walletName("custody"))} <b class="num">${tk(sum(k.undeposited, t => t.amount))}</b> আছে (${bn(k.undeposited.length)}টি রসিদ)। ${bn(c.depositByDay)} তারিখের মধ্যে যৌথ হিসাবে জমা দিয়ে স্লিপের ছবি যুক্ত করুন। ${eb(`<button class="btn sm" data-act="transfer">ব্যাংকে জমা লিখুন</button>`)}</div>`);
+  const bankStart = c.bankStartMonth || "2027-01";
+  if (k.undeposited.length && cm < bankStart) alerts.push(`<div class="alert info">${esc(walletName("custody"))} <b class="num">${tk(sum(k.undeposited, t => t.amount))}</b> আছে (${bn(k.undeposited.length)}টি রসিদ)। সিদ্ধান্ত অনুযায়ী ${mLabel(bankStart)}-এর আগের মাসগুলোর টাকা ${mLabel(bankStart)}-এ যৌথ হিসাবে জমা হবে।</div>`);
+  else if (k.undeposited.length) alerts.push(`<div class="alert">${esc(walletName("custody"))} <b class="num">${tk(sum(k.undeposited, t => t.amount))}</b> আছে (${bn(k.undeposited.length)}টি রসিদ)। ${bn(c.depositByDay)} তারিখের মধ্যে যৌথ হিসাবে জমা দিয়ে স্লিপের ছবি যুক্ত করুন। ${eb(`<button class="btn sm" data-act="transfer">ব্যাংকে জমা লিখুন</button>`)}</div>`);
   const late = am.filter(m => monthStatus(m, cm) === "late");
   if (late.length) alerts.push(`<div class="alert bad">${mLabel(cm)}-এর চাঁদা বাকি: ${late.map(m => esc(m.name)).join(", ")}</div>`);
   const dueLoans = S.loans.filter(l => loanOutstanding(l) > 0 && l.dueDate && l.dueDate < todayISO());
@@ -568,7 +570,7 @@ function vOverview(){
   return `
   <section class="tiles">
     <div class="tile main"><div class="l">মোট সম্পদ</div><div class="v">${tk(k.assets)}</div><div class="s">হাতে-ব্যাংকে + ঋণ + বিনিয়োগ</div></div>
-    <div class="tile ${k.bal.custody > 0 ? "warn" : ""}"><div class="l">${esc(walletName("custody"))}</div><div class="v">${tk(k.bal.custody)}</div><div class="s">${k.bal.custody > 0 ? "ব্যাংকে জমার অপেক্ষায়" : "সব টাকা ব্যাংকে"}</div></div>
+    <div class="tile ${k.bal.custody > 0 && cm >= bankStart ? "warn" : ""}"><div class="l">${esc(walletName("custody"))}</div><div class="v">${tk(k.bal.custody)}</div><div class="s">${k.bal.custody > 0 ? (cm < bankStart ? mLabel(bankStart) + "-এ ব্যাংকে যাবে" : "ব্যাংকে জমার অপেক্ষায়") : "সব টাকা ব্যাংকে"}</div></div>
     ${accTile("bankA")}${accTile("bankB")}
     <div class="tile gold"><div class="l">সদস্যদের কাছে ঋণ</div><div class="v">${tk(k.loansOut)}</div><div class="s">সুদমুক্ত করজে হাসানা</div></div>
     <div class="tile gold"><div class="l">চলমান বিনিয়োগ</div><div class="v">${tk(k.invActive)}</div><div class="s">নিট লাভ/ক্ষতি ${tk(k.netProfit)}</div></div>
@@ -838,6 +840,7 @@ function vSettings(){
     <label class="f">শুরুর মাস<input type="month" id="s_start" value="${esc(c.startMonth)}"></label>
     <label class="f">চাঁদা জমার শেষ তারিখ (মাসের)<input type="number" min="1" max="28" id="s_due" value="${c.dueDay}"></label>
     <label class="f">ব্যাংকে জমার শেষ তারিখ (মাসের)<input type="number" min="1" max="28" id="s_dep" value="${c.depositByDay}"></label>
+    <label class="f">ব্যাংকে জমা শুরু হবে যে মাস থেকে (এর আগে "জমা দিন" সতর্কতা দেখাবে না)<input type="month" id="s_bankStart" value="${esc(c.bankStartMonth || "2027-01")}"></label>
     <label class="f">সিদ্ধান্ত পাসে কত জনের "হ্যাঁ" লাগবে<input type="number" min="1" max="10" id="s_appr" value="${c.approvalNeeded}"></label>
     <label class="f">ঋণসীমা (নিজের জমার কত %)<input type="number" min="0" max="500" id="s_loan" value="${c.loanMaxPct}"></label>
     <label class="f full">চাঁদার হার (প্রতি লাইনে: মাস টাকা, যেমন 2026-11 2000)<textarea id="s_rates">${(c.rates||[]).map(r => r.from + " " + r.amount).join("\n")}</textarea></label>
@@ -1192,7 +1195,7 @@ async function saveCfg(btn){
   const goals = val("s_goals").split("\n").map(l => l.split("|").map(s => s.trim())).filter(p => p[0] && +p[1] > 0).map(p => ({ name: p[0], amount: +p[1] }));
   const accounts = {}; for (const id of ["bankA","bankB"]) accounts[id] = { label: val(`s_${id}_label`) || DEFAULT_CFG.accounts[id].label, bank: val(`s_${id}_bank`), branch: val(`s_${id}_branch`), last4: val(`s_${id}_last4`).replace(/\D/g, "").slice(-4), opened: val(`s_${id}_opened`) };
   const roles = [...document.querySelectorAll("[data-role-row]")].map(row => ({ id: row.dataset.roleId || genId("R"), bn: row.querySelector(".r_bn").value.trim(), en: row.querySelector(".r_en").value.trim(), duty: row.querySelector(".r_duty").value.trim() })).filter(x => x.bn);
-  const data = Object.assign({}, c, { roles, groupNameEn: val("s_nameEn"), custodyLabel: val("s_custody") || DEFAULT_CFG.custodyLabel, groupName: val("s_name") || c.groupName, managerName: val("s_mgr"), startMonth: val("s_start") || c.startMonth, dueDay: +val("s_due") || 12, depositByDay: +val("s_dep") || 20, approvalNeeded: +val("s_appr") || 4, loanMaxPct: +val("s_loan") || 0, rates: rates.length ? rates : c.rates, goals, accounts });
+  const data = Object.assign({}, c, { roles, groupNameEn: val("s_nameEn"), custodyLabel: val("s_custody") || DEFAULT_CFG.custodyLabel, groupName: val("s_name") || c.groupName, managerName: val("s_mgr"), startMonth: val("s_start") || c.startMonth, bankStartMonth: val("s_bankStart") || c.bankStartMonth || "2027-01", dueDay: +val("s_due") || 12, depositByDay: +val("s_dep") || 20, approvalNeeded: +val("s_appr") || 4, loanMaxPct: +val("s_loan") || 0, rates: rates.length ? rates : c.rates, goals, accounts });
   await guarded(btn, async () => { await commit("সেটিংস পরিবর্তন", d => { d.cfg = data; }); toast("সেটিংস সংরক্ষিত।"); });
 }
 
