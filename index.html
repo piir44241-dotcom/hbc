@@ -1215,15 +1215,17 @@ function wrap(g, text, x, y, maxW, lh){
   if (line) { g.fillText(line, x, y + n * lh); n++; }
   return n;
 }
-async function drawReceipt(t){
-  try { await Promise.all([document.fonts.load('600 30px "Hind Siliguri"'), document.fonts.load('400 40px "Tiro Bangla"'), document.fonts.load('700 30px "Hind Siliguri"'), document.fonts.load('500 24px "Hind Siliguri"'), document.fonts.load('400 21px "Hind Siliguri"')]); } catch (e) {}
+async function drawReceipt(t, opt){
+  opt = opt || {};
+  const within = (pr, ms) => Promise.race([pr, new Promise(r => setTimeout(r, ms))]);
+  try { await within(Promise.all([document.fonts.load('600 30px "Hind Siliguri"'), document.fonts.load('400 40px "Tiro Bangla"'), document.fonts.load('700 30px "Hind Siliguri"'), document.fonts.load('500 24px "Hind Siliguri"'), document.fonts.load('400 21px "Hind Siliguri"')]), 3500); } catch (e) {}
   const c = cfg(), Wd = 1000, H = 1240, cv = document.createElement("canvas"); cv.width = Wd; cv.height = H;
   const g = cv.getContext("2d"), green = "#c8102e", gold = "#141414", ink = "#141414", muted = "#5f6268";
   g.fillStyle = "#ffffff"; g.fillRect(0, 0, Wd, H);
   g.strokeStyle = gold; g.lineWidth = 3; g.strokeRect(24, 24, Wd - 48, H - 48); g.strokeStyle = green; g.lineWidth = 1.5; g.strokeRect(34, 34, Wd - 68, H - 68);
   g.fillStyle = "#ffffff"; g.fillRect(34, 34, Wd - 68, 150);
   g.fillStyle = green; g.fillRect(34, 180, Wd - 68, 5);
-  await drawLogo(g, 60, 46, 126);
+  await drawLogo(g, 60, 46, 126, opt.noLogo);
   g.textAlign = "left"; g.fillStyle = ink; g.font = '700 44px "Hind Siliguri", sans-serif'; g.fillText(c.groupName, 210, 102);
   g.fillStyle = green; g.font = '600 20px "Hind Siliguri", sans-serif'; g.fillText((c.groupNameEn || "").toUpperCase().split("").join(" "), 212, 140);
   g.textAlign = "right"; g.fillStyle = green; g.font = '700 28px "Hind Siliguri", sans-serif'; g.fillText("টাকা প্রাপ্তির রসিদ", Wd - 70, 222 - 120);
@@ -1253,20 +1255,31 @@ function loadLogo(){
   LOGO_IMG = new Promise(res => { const im = new Image(); im.onload = () => res(im); im.onerror = () => res(null); im.src = "assets/logo-mark.png?v=" + (window.LOGO_VERSION || 1); setTimeout(() => res(null), 4000); });
   return LOGO_IMG;
 }
-async function drawLogo(g, x, y, size){
-  const im = await loadLogo();
+async function drawLogo(g, x, y, size, skipImage){
+  const im = skipImage ? null : await loadLogo();
   if (im) { try { const r = Math.min(size / im.width, size / im.height); g.drawImage(im, x + (size - im.width * r) / 2, y + (size - im.height * r) / 2, im.width * r, im.height * r); return; } catch (e) {} }
   const cx = x + size / 2, cy = y + size / 2, R = size * 0.48;
   g.fillStyle = "#141414"; g.beginPath(); for (let i = 0; i < 6; i++) { const a = Math.PI / 180 * (-90 + 60 * i); g[i ? "lineTo" : "moveTo"](cx + R * Math.cos(a), cy + R * Math.sin(a)); } g.closePath(); g.fill();
   g.fillStyle = "#ffffff"; g.textAlign = "center"; g.font = `700 ${Math.round(size * 0.3)}px "Hind Siliguri", sans-serif`; g.fillText("HBC", cx, cy + size * 0.1); g.textAlign = "left";
 }
 let lastReceipt = null;
+/* রসিদের ছবি বানানো: লোগোসহ চেষ্টা, না হলে লোগো ছাড়া; কোথাও আটকে থাকবে না */
+function canvasToBlob(cv){ return new Promise((res, rej) => { try { cv.toBlob(b => b ? res(b) : rej(new Error("ছবি তৈরি হয়নি")), "image/png"); } catch (e) { rej(e); } setTimeout(() => rej(new Error("সময় শেষ")), 8000); }); }
+async function receiptBlob(t){
+  try { return await canvasToBlob(await drawReceipt(t)); }
+  catch (e) { console.warn("receipt with logo failed, retrying without", e); return await canvasToBlob(await drawReceipt(t, { noLogo: true })); }
+}
 async function showReceipt(id){
   const t = S.txns.find(x => x.id === id && x.type === "contribution");
   if (!t) { openModal(`${dlgHead("রসিদ পাওয়া যায়নি")}<p>${esc(id)} নম্বরের কোনো রসিদ খতিয়ানে নেই। হয়তো মুছে ফেলা হয়েছে; "খতিয়ান"-এর পরিবর্তনের রেকর্ড দেখুন।</p>`); return; }
   openModal(`${dlgHead("রসিদ " + esc(t.id))}<div class="loading">রসিদ তৈরি হচ্ছে…</div>`);
-  const cv = await drawReceipt(t);
-  const blob = await new Promise(r => cv.toBlob(r, "image/png"));
+  let blob = null;
+  try { blob = await receiptBlob(t); }
+  catch (e) {
+    console.error(e);
+    modal.querySelector(".dlg").innerHTML = `${dlgHead("রসিদ " + esc(t.id))}<div class="alert good small">টাকা খতিয়ানে সংরক্ষিত হয়েছে। এই ব্রাউজারে রসিদের ছবি বানানো যায়নি, তাই লেখা আকারে দেওয়া হলো।</div><textarea style="min-height:240px;width:100%" readonly>${esc(receiptText(t))}</textarea><div class="row"><button class="btn p" data-act="copyreceipt" data-id="${esc(t.id)}">লেখা কপি</button><button class="btn" data-act="receipt" data-id="${esc(t.id)}">আবার চেষ্টা</button></div><p class="small muted">সমস্যা: ${esc(String(e && e.message || e))}</p>`;
+    return;
+  }
   if (lastReceipt) URL.revokeObjectURL(lastReceipt.url);
   lastReceipt = { id: t.id, blob, url: URL.createObjectURL(blob) };
   const canShare = !!(navigator.canShare && navigator.canShare({ files: [new File([blob], "r.png", { type: "image/png" })] }));
